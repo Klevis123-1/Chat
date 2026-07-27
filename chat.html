@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100 select-none">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CipherChat - E2EE Messaging</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              500: '#22c55e',
+              600: '#16a34a',
+              900: '#14532d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * {
+      -webkit-user-select: none !important;
+      -moz-user-select: none !important;
+      -ms-user-select: none !important;
+      user-select: none !important;
+      -webkit-touch-callout: none !important;
+    }
+    
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(51, 65, 85, 0.8);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(71, 85, 105, 1);
+    }
+
+    @media print {
+      body * {
+        display: none !important;
+      }
+      body::after {
+        content: 'no thanks :(';
+        display: flex !important;
+        justify-content: center;
+        align-items: center;
+        position: fixed;
+        inset: 0;
+        background: black !important;
+        color: white !important;
+        font-size: 24px;
+        font-family: monospace;
+        z-index: 999999;
+      }
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased overflow-hidden bg-slate-950">
+
+  <!-- PITCH BLACK OVERLAY FOR SCREENSHOT / TAB SWITCH PROTECTION -->
+  <div id="privacyShield" class="hidden fixed inset-0 bg-black z-[99999] flex flex-col items-center justify-center text-center p-4 select-none">
+    <p class="text-white font-mono text-xl sm:text-2xl font-bold tracking-wide">no thanks :(</p>
+  </div>
+
+  <!-- Main Container -->
+  <div id="app" class="flex-1 flex flex-col max-w-5xl w-full mx-auto h-full sm:p-4 p-0 transition-all duration-100">
+    
+    <!-- Top Header -->
+    <header class="bg-slate-900/80 backdrop-blur border-b sm:border border-slate-800 sm:rounded-t-2xl p-4 flex items-center justify-between z-10">
+      <div class="flex items-center gap-3">
+        <div class="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg text-slate-100 flex items-center gap-2">
+            CipherChat 
+            <span id="encryptionBadge" class="text-xs px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono hidden">AES-256 E2EE</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-400 border border-rose-800/80 font-mono">Zero-Trace</span>
+          </h1>
+          <p id="roomSubtitle" class="text-xs text-slate-400 font-mono">Not connected to a room</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="usersToggleBtn" class="hidden px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+          </svg>
+          <span id="activeUsersCount">Online (0)</span>
+        </button>
+        <button id="securityInfoBtn" class="hidden p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition" title="Security Info">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+        </button>
+        <button id="leaveRoomBtn" class="hidden px-3 py-1.5 text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 rounded-lg transition">
+          Leave & Wipe Room
+        </button>
+      </div>
+    </header>
+
+    <!-- Content Area -->
+    <main class="flex-1 flex bg-slate-900/40 sm:border-x border-slate-800 overflow-hidden relative">
+      
+      <!-- JOIN / SETUP SCREEN -->
+      <section id="setupScreen" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-20 flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-slate-900 border border-slate-800 p-6 sm:p-8 rounded-2xl w-full max-w-md shadow-2xl relative my-auto">
+          <div class="text-center mb-6">
+            <div class="inline-flex p-3 bg-emerald-500/10 text-emerald-400 rounded-2xl border border-emerald-500/20 mb-3">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-slate-100">Enter Encrypted Chat</h2>
+            <p class="text-xs text-slate-400 mt-1">E2EE text + photos. Room self-destructs instantly when all users leave.</p>
+          </div>
+
+          <form id="joinForm" class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Username</label>
+              <input type="text" id="usernameInput" required maxlength="20" placeholder="e.g. cyber_ghost" 
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition font-mono text-sm">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Room ID</label>
+              <input type="text" id="roomIdInput" required maxlength="30" placeholder="e.g. secret-lounge" 
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition font-mono text-sm">
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Encryption Key</label>
+                <button type="button" id="generateKeyBtn" class="text-[10px] text-emerald-400 hover:underline font-mono">Generate Random</button>
+              </div>
+              <div class="relative flex items-center">
+                <input type="text" id="passphraseInput" required placeholder="kachatroom-secretpass" 
+                  class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition font-mono text-sm">
+              </div>
+              <p class="text-[11px] text-emerald-400/80 mt-1 font-mono">Key must start with: <span class="underline">kachatroom-</span></p>
+            </div>
+
+            <div id="validationError" class="hidden p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-mono"></div>
+
+            <button type="submit" id="joinBtn" class="w-full mt-2 py-3 bg-emerald-600 hover:bg-emerald-500 font-semibold text-slate-950 rounded-xl transition shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2">
+              <span>Join Encrypted Chat</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+              </svg>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ACTIVE USERS SIDEBAR OVERLAY -->
+      <aside id="usersSidebar" class="hidden absolute right-0 top-0 bottom-0 w-64 bg-slate-900/95 backdrop-blur border-l border-slate-800 z-10 flex flex-col p-4 shadow-xl">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+          <h3 class="font-bold text-sm text-slate-200">Users in Room</h3>
+          <button id="closeUsersBtn" class="text-slate-400 hover:text-slate-200">✕</button>
+        </div>
+        <div id="usersList" class="flex-1 overflow-y-auto space-y-2">
+          <!-- Populated dynamically -->
+        </div>
+      </aside>
+
+      <!-- CHAT MESSAGES PANEL -->
+      <section class="flex-1 flex flex-col h-full overflow-hidden relative">
+        
+        <!-- Messages Scroll Box -->
+        <div id="messagesBox" class="flex-1 overflow-y-auto p-4 space-y-4">
+          <div class="text-center my-8 text-slate-600 text-xs font-mono">
+            --- End-to-End Encrypted Session Initialized ---
+          </div>
+        </div>
+
+        <!-- System Alert Banner -->
+        <div id="systemBanner" class="hidden px-4 py-2 bg-amber-500/10 border-t border-amber-500/20 text-amber-400 text-xs font-mono flex items-center justify-between">
+          <span id="systemBannerText">Some messages could not be decrypted.</span>
+          <button id="closeBannerBtn" class="text-amber-400 hover:text-amber-200 ml-2">✕</button>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="chatForm" class="p-3 sm:p-4 bg-slate-900/90 border-t border-slate-800 flex gap-2 items-center">
+          <input type="file" id="imageInput" accept="image/*" class="hidden">
+          <button type="button" id="uploadImgBtn" class="p-3 bg-slate-950 border border-slate-800 hover:border-emerald-500 text-slate-400 hover:text-emerald-400 rounded-xl transition flex items-center justify-center shrink-0" title="Send Encrypted Image">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+          </button>
+          
+          <input type="text" id="messageInput" placeholder="Type an encrypted message..." autocomplete="off"
+            class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition text-sm">
+          
+          <button type="submit" id="sendBtn" class="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 font-semibold text-slate-950 rounded-xl transition flex items-center justify-center disabled:opacity-50 shrink-0">
+            <svg class="w-5 h-5 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+            </svg>
+          </button>
+        </form>
+
+      </section>
+    </main>
+
+    <!-- Footer Security Banner -->
+    <footer class="bg-slate-900/80 border-t sm:border border-slate-800 sm:rounded-b-2xl p-2.5 px-4 text-[11px] text-slate-500 flex items-center justify-between font-mono">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="securityStatus">Security: AES-GCM 256-bit Encrypted Text & Photos</span>
+      </div>
+      <div class="hidden sm:block">Zero-Trace Channel</div>
+    </footer>
+  </div>
+
+  <!-- Security Details Modal -->
+  <div id="securityModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-lg space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="font-bold text-slate-100 flex items-center gap-2">
+          <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+          Encryption Diagnostics
+        </h3>
+        <button id="closeSecurityModalBtn" class="text-slate-400 hover:text-slate-100">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs font-mono">
+        <div>
+          <span class="text-slate-500 block mb-1">Full Passphrase:</span>
+          <div id="fullPassphraseVal" class="p-2 bg-slate-950 rounded border border-slate-800 text-emerald-400 break-all select-all">kachatroom-</div>
+        </div>
+
+        <div>
+          <span class="text-slate-500 block mb-1">Key Fingerprint (SHA-256):</span>
+          <div id="keyFingerprint" class="p-2 bg-slate-950 rounded border border-slate-800 text-emerald-400 break-all select-all">Computing...</div>
+        </div>
+
+        <div>
+          <span class="text-slate-500 block mb-1">Zero-Trace Protocol:</span>
+          <p class="text-slate-300">Images are compressed, encoded, and encrypted in browser prior to transmission. Room completely wipes on 0 users.</p>
+        </div>
+      </div>
+
+      <div class="pt-2 text-right">
+        <button id="closeModalActionBtn" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase Modules -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, deleteDoc, addDoc, onSnapshot, query, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "demo",
+      authDomain: "demo.firebaseapp.com",
+      projectId: "demo",
+      storageBucket: "demo.appspot.com",
+      messagingSenderId: "123",
+      appId: "123"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+    let currentUser = null;
+    let username = '';
+    let roomId = '';
+    let fullPassphrase = '';
+    let cryptoKey = null;
+    let keyFingerprintHex = '';
+    let unsubscribeMessages = null;
+    let unsubscribePresence = null;
+
+    // DOM References
+    const privacyShield = document.getElementById('privacyShield');
+    const setupScreen = document.getElementById('setupScreen');
+    const joinForm = document.getElementById('joinForm');
+    const usernameInput = document.getElementById('usernameInput');
+    const roomIdInput = document.getElementById('roomIdInput');
+    const passphraseInput = document.getElementById('passphraseInput');
+    const generateKeyBtn = document.getElementById('generateKeyBtn');
+    const validationError = document.getElementById('validationError');
+    const roomSubtitle = document.getElementById('roomSubtitle');
+    const encryptionBadge = document.getElementById('encryptionBadge');
+    const leaveRoomBtn = document.getElementById('leaveRoomBtn');
+    const securityInfoBtn = document.getElementById('securityInfoBtn');
+    const usersToggleBtn = document.getElementById('usersToggleBtn');
+    const activeUsersCount = document.getElementById('activeUsersCount');
+    const usersSidebar = document.getElementById('usersSidebar');
+    const usersList = document.getElementById('usersList');
+    const closeUsersBtn = document.getElementById('closeUsersBtn');
+    const messagesBox = document.getElementById('messagesBox');
+    const chatForm = document.getElementById('chatForm');
+    const messageInput = document.getElementById('messageInput');
+    const imageInput = document.getElementById('imageInput');
+    const uploadImgBtn = document.getElementById('uploadImgBtn');
+    const systemBanner = document.getElementById('systemBanner');
+    const systemBannerText = document.getElementById('systemBannerText');
+    const closeBannerBtn = document.getElementById('closeBannerBtn');
+    const securityModal = document.getElementById('securityModal');
+    const fullPassphraseVal = document.getElementById('fullPassphraseVal');
+    const keyFingerprintEl = document.getElementById('keyFingerprint');
+
+    // BLACKOUT SHIELD
+    function triggerBlackout() {
+      privacyShield.classList.remove('hidden');
+    }
+
+    function removeBlackout() {
+      privacyShield.classList.add('hidden');
+    }
+
+    window.addEventListener('blur', triggerBlackout);
+    window.addEventListener('focus', removeBlackout);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden || document.visibilityState === 'hidden') {
+        triggerBlackout();
+      } else {
+        removeBlackout();
+      }
+    });
+
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'PrintScreen') {
+        navigator.clipboard?.writeText('');
+        triggerBlackout();
+        setTimeout(removeBlackout, 3000);
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (
+        (e.ctrlKey && (e.key === 'p' || e.key === 's' || e.key === 'u' || e.key === 'c')) ||
+        (e.metaKey && (e.key === 'p' || e.key === 's' || e.key === 'u' || e.key === 'c')) ||
+        e.key === 'F12'
+      ) {
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (roomId && currentUser) {
+        leavePresence(roomId);
+      }
+    });
+
+    // Auth Initialization
+    async function initAuth() {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth error:", err);
+      }
+    }
+    initAuth();
+
+    onAuthStateChanged(auth, (u) => {
+      currentUser = u;
+    });
+
+    // Web Crypto Helpers
+    async function deriveCryptoKey(secret, saltString) {
+      const enc = new TextEncoder();
+      const keyMaterial = await window.crypto.subtle.importKey(
+        "raw",
+        enc.encode(secret),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
+
+      const salt = enc.encode(saltString);
+      return await window.crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256"
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"]
+      );
+    }
+
+    async function computeFingerprint(secret) {
+      const enc = new TextEncoder();
+      const hashBuf = await window.crypto.subtle.digest("SHA-256", enc.encode(secret));
+      return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function encryptText(plaintext, key) {
+      const enc = new TextEncoder();
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
+      const encryptedBuffer = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        enc.encode(plaintext)
+      );
+
+      return {
+        iv: btoa(String.fromCharCode(...iv)),
+        ciphertext: btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer)))
+      };
+    }
+
+    async function decryptText(encryptedObject, key) {
+      try {
+        const iv = Uint8Array.from(atob(encryptedObject.iv), c => c.charCodeAt(0));
+        const ciphertext = Uint8Array.from(atob(encryptedObject.ciphertext), c => c.charCodeAt(0));
+
+        const decryptedBuffer = await window.crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: iv },
+          key,
+          ciphertext
+        );
+
+        return new TextDecoder().decode(decryptedBuffer);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    // Client-side Image Compressor
+    function compressImage(file, maxDim = 800, quality = 0.6) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > maxDim) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              }
+            } else {
+              if (height > maxDim) {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    generateKeyBtn.addEventListener('click', () => {
+      const randomBytes = Array.from(window.crypto.getRandomValues(new Uint8Array(8)))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+      passphraseInput.value = `kachatroom-${randomBytes}`;
+    });
+
+    // Join Form Event
+    joinForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      validationError.classList.add('hidden');
+
+      username = usernameInput.value.trim();
+      roomId = roomIdInput.value.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+      let rawKey = passphraseInput.value.trim();
+
+      if (username.toLowerCase() === roomId.toLowerCase()) {
+        validationError.textContent = "Username and Chat Room ID cannot be the same!";
+        validationError.classList.remove('hidden');
+        return;
+      }
+
+      if (!rawKey.startsWith('kachatroom-')) {
+        fullPassphrase = 'kachatroom-' + rawKey;
+        passphraseInput.value = fullPassphrase;
+      } else {
+        fullPassphrase = rawKey;
+      }
+
+      if (!username || !roomId || !fullPassphrase) return;
+
+      cryptoKey = await deriveCryptoKey(fullPassphrase, "RoomSalt_" + roomId);
+      keyFingerprintHex = await computeFingerprint(fullPassphrase + roomId);
+
+      roomSubtitle.textContent = `Room: #${roomId} • User: ${username}`;
+      encryptionBadge.classList.remove('hidden');
+      leaveRoomBtn.classList.remove('hidden');
+      securityInfoBtn.classList.remove('hidden');
+      usersToggleBtn.classList.remove('hidden');
+      setupScreen.classList.add('hidden');
+
+      await joinPresence(roomId, username);
+      subscribeToRoom(roomId);
+      subscribeToPresence(roomId);
+    });
+
+    async function joinPresence(roomName, uName) {
+      if (!currentUser) return;
+      const userRef = doc(db, 'artifacts', appId, 'public', 'data', `presence_${roomName}`, currentUser.uid);
+      await setDoc(userRef, {
+        username: uName,
+        joinedAt: Date.now()
+      });
+    }
+
+    async function leavePresence(roomName) {
+      if (!currentUser) return;
+      const userRef = doc(db, 'artifacts', appId, 'public', 'data', `presence_${roomName}`, currentUser.uid);
+      try {
+        await deleteDoc(userRef);
+      } catch(e) {}
+    }
+
+    async function wipeEntireRoomData(roomName) {
+      try {
+        const roomCol = collection(db, 'artifacts', appId, 'public', 'data', `chat_room_${roomName}`);
+        const snapshot = await getDocs(query(roomCol));
+        snapshot.forEach(async (d) => {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `chat_room_${roomName}`, d.id));
+        });
+      } catch(e) {}
+    }
+
+    function subscribeToPresence(roomName) {
+      if (!currentUser) return;
+      const presenceCol = collection(db, 'artifacts', appId, 'public', 'data', `presence_${roomName}`);
+
+      unsubscribePresence = onSnapshot(query(presenceCol), async (snapshot) => {
+        const users = [];
+        snapshot.forEach(doc => {
+          users.push(doc.data().username || 'Anonymous');
+        });
+
+        if (users.length === 0) {
+          await wipeEntireRoomData(roomName);
+        }
+
+        activeUsersCount.textContent = `Online (${users.length})`;
+        usersList.innerHTML = users.map(u => `
+          <div class="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800 text-xs font-mono text-slate-200">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span class="truncate">${escapeHtml(u)}</span>
+            ${u === username ? '<span class="text-[10px] text-emerald-400 font-sans ml-auto">(You)</span>' : ''}
+          </div>
+        `).join('');
+      });
+    }
+
+    leaveRoomBtn.addEventListener('click', async () => {
+      await leavePresence(roomId);
+
+      if (unsubscribeMessages) unsubscribeMessages();
+      if (unsubscribePresence) unsubscribePresence();
+
+      unsubscribeMessages = null;
+      unsubscribePresence = null;
+
+      messagesBox.innerHTML = `<div class="text-center my-8 text-slate-600 text-xs font-mono">--- End-to-End Encrypted Session Initialized ---</div>`;
+      setupScreen.classList.remove('hidden');
+      encryptionBadge.classList.add('hidden');
+      leaveRoomBtn.classList.add('hidden');
+      securityInfoBtn.classList.add('hidden');
+      usersToggleBtn.classList.add('hidden');
+      usersSidebar.classList.add('hidden');
+      roomSubtitle.textContent = 'Not connected to a room';
+    });
+
+    // Send Text Message
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = messageInput.value.trim();
+      if (!text || !cryptoKey || !currentUser) return;
+
+      messageInput.value = '';
+
+      try {
+        const encrypted = await encryptText(text, cryptoKey);
+        const roomCol = collection(db, 'artifacts', appId, 'public', 'data', `chat_room_${roomId}`);
+
+        await addDoc(roomCol, {
+          username: username,
+          senderUid: currentUser.uid,
+          payload: encrypted,
+          msgType: 'text',
+          createdAtMs: Date.now()
+        });
+      } catch (err) {
+        console.error("Failed to send message:", err);
+      }
+    });
+
+    // Upload & Encrypt Image
+    uploadImgBtn.addEventListener('click', () => imageInput.click());
+
+    imageInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file || !cryptoKey || !currentUser) return;
+
+      try {
+        uploadImgBtn.classList.add('animate-pulse', 'text-emerald-400');
+        const compressedBase64 = await compressImage(file, 800, 0.6);
+        const encrypted = await encryptText(compressedBase64, cryptoKey);
+
+        const roomCol = collection(db, 'artifacts', appId, 'public', 'data', `chat_room_${roomId}`);
+        await addDoc(roomCol, {
+          username: username,
+          senderUid: currentUser.uid,
+          payload: encrypted,
+          msgType: 'image',
+          createdAtMs: Date.now()
+        });
+      } catch (err) {
+        console.error("Failed to encrypt and send image:", err);
+      } finally {
+        uploadImgBtn.classList.remove('animate-pulse', 'text-emerald-400');
+        imageInput.value = '';
+      }
+    });
+
+    // Subscribe to Room Messages
+    function subscribeToRoom(roomName) {
+      if (!currentUser) return;
+      const roomCol = collection(db, 'artifacts', appId, 'public', 'data', `chat_room_${roomName}`);
+      
+      unsubscribeMessages = onSnapshot(query(roomCol), async (snapshot) => {
+        const rawDocs = [];
+        snapshot.forEach(doc => {
+          rawDocs.push({ id: doc.id, ...doc.data() });
+        });
+
+        rawDocs.sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+
+        messagesBox.innerHTML = `<div class="text-center my-6 text-slate-600 text-xs font-mono">--- E2EE Channel #${roomName} Connected ---</div>`;
+
+        let decryptionFailedCount = 0;
+
+        for (const msg of rawDocs) {
+          let decryptedContent = null;
+          if (msg.payload && msg.payload.iv && msg.payload.ciphertext) {
+            decryptedContent = await decryptText(msg.payload, cryptoKey);
+          }
+
+          if (decryptedContent === null) decryptionFailedCount++;
+
+          renderMessageBubble(msg, decryptedContent);
+        }
+
+        if (decryptionFailedCount > 0) {
+          systemBannerText.textContent = `${decryptionFailedCount} message(s) could not be decrypted. Ensure key is exact!`;
+          systemBanner.classList.remove('hidden');
+        } else {
+          systemBanner.classList.add('hidden');
+        }
+
+        messagesBox.scrollTop = messagesBox.scrollHeight;
+      });
+    }
+
+    function renderMessageBubble(msg, text) {
+      const isMe = msg.senderUid === currentUser?.uid;
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} mb-3`;
+
+      const formattedTime = msg.createdAtMs 
+        ? new Date(msg.createdAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : 'Just now';
+
+      if (text !== null) {
+        const isImg = text.startsWith('data:image/');
+        
+        msgDiv.innerHTML = `
+          <div class="flex items-center gap-2 mb-1 px-1">
+            <span class="text-xs font-bold font-mono ${isMe ? 'text-emerald-400' : 'text-slate-300'}">${escapeHtml(msg.username || 'Anonymous')}</span>
+            <span class="text-[10px] text-slate-500 font-mono">${formattedTime}</span>
+          </div>
+          <div class="max-w-[85%] sm:max-w-[70%] ${isImg ? 'p-1.5' : 'p-3.5'} rounded-2xl text-sm leading-relaxed ${
+            isMe 
+              ? 'bg-emerald-600 text-slate-950 rounded-tr-none font-medium shadow-md shadow-emerald-950/20' 
+              : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700/60 shadow-md'
+          } break-words">
+            ${isImg 
+              ? `<img src="${text}" class="rounded-xl max-h-64 object-cover w-full pointer-events-none" alt="Encrypted Photo" />` 
+              : escapeHtml(text)}
+          </div>
+        `;
+      } else {
+        msgDiv.innerHTML = `
+          <div class="flex items-center gap-2 mb-1 px-1">
+            <span class="text-xs font-bold font-mono text-slate-400">${escapeHtml(msg.username || 'Unknown')}</span>
+            <span class="text-[10px] text-slate-500 font-mono">${formattedTime}</span>
+          </div>
+          <div class="max-w-[85%] sm:max-w-[70%] p-3 rounded-2xl text-xs font-mono bg-rose-950/40 border border-rose-900/60 text-rose-300 rounded-tl-none flex items-center gap-2">
+            <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+            <span>🔒 Unreadable (Decryption Failed)</span>
+          </div>
+        `;
+      }
+
+      messagesBox.appendChild(msgDiv);
+    }
+
+    usersToggleBtn.addEventListener('click', () => usersSidebar.classList.toggle('hidden'));
+    closeUsersBtn.addEventListener('click', () => usersSidebar.classList.add('hidden'));
+    closeBannerBtn.addEventListener('click', () => systemBanner.classList.add('hidden'));
+
+    securityInfoBtn.addEventListener('click', () => {
+      fullPassphraseVal.textContent = fullPassphrase;
+      keyFingerprintEl.textContent = keyFingerprintHex || 'Not set';
+      securityModal.classList.remove('hidden');
+    });
+
+    document.getElementById('closeSecurityModalBtn').addEventListener('click', () => securityModal.classList.add('hidden'));
+    document.getElementById('closeModalActionBtn').addEventListener('click', () => securityModal.classList.add('hidden'));
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
+
